@@ -1,0 +1,11 @@
+{
+  "domain": "ileo_direct",
+  "name": "Iléo conso sensor",
+  "documentation": "https://github.com/hal01/ileo_direct",
+  "issue_tracker": "https://github.com/hal01/ileo_direct/issues",
+  "dependencies": [],
+  "codeowners": ["@hal01"],
+  "requirements": [],
+  "iot_class": "cloud_polling",
+  "version": "1.0.0"
+}
