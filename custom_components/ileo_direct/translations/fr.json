@@ -1,0 +1,21 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Connexion à Iléo",
+                "description": "Entrez vos identifiants de l'espace client Mel-Iléo.",
+                "data": {
+                    "username": "Email",
+                    "password": "Mot de passe",
+                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie (Risque de doublons)"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Identifiants invalides ou erreur de connexion."
+        },
+        "abort": {
+            "already_configured": "Ce compte est déjà configuré."
+        }
+    }
+}

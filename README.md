@@ -1,23 +1,66 @@
-# Iléo Water Direct pour Home Assistant
+# 💧 Iléo Water Direct pour Home Assistant
 
-Intégration personnalisée pour récupérer la consommation d'eau et l'historique depuis le site **Iléo (Mel-Iléo)**.
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![version](https://img.shields.io/github/v/release/hal01/ileo_direct)](https://github.com/hal01/ileo_direct/releases)
 
-## Fonctionnalités
-- Récupération de l'index du compteur (compatible Dashboard Énergie).
-- Récupération de la consommation journalière (en Litres).
-- **Historique complet** : Injection des données des 6 derniers mois dans les statistiques Home Assistant.
+Intégration personnalisée pour récupérer votre consommation d'eau depuis le fournisseur **Iléo (Mel-Iléo)** directement dans Home Assistant.
 
-## Installation via HACS
-1. Dans HACS, cliquez sur les 3 points en haut à droite > **Dépôts personnalisés**.
-2. Ajoutez l'URL : `https://github.com/VOTRE_PSEUDO/ileo_direct`.
-3. Catégorie : **Intégration**.
-4. Cliquez sur **Installer**.
+Cette intégration se connecte à votre espace client, récupère votre index et votre consommation journalière, et injecte l'historique dans les statistiques de Home Assistant.
 
-## Configuration (YAML)
-Ajoutez ceci dans votre `configuration.yaml` :
+## ✨ Fonctionnalités
+
+* **100% Interface Graphique :** Configuration facile via le menu "Appareils et services" (Config Flow).
+* **Dashboard Énergie :** Compatible nativement avec le tableau de bord Énergie (Total Increasing).
+* **Historique Profond :** Récupère les 6 derniers mois d'historique (CSV) et les injecte dans les statistiques.
+* **Double Capteur :**
+    * `sensor.index_compteur` : Pour le suivi total.
+    * `sensor.conso_jour` : Pour l'analyse quotidienne (en Litres).
+
+## 🚀 Installation
+
+### Via HACS (Recommandé)
+
+1.  Ouvrez HACS dans Home Assistant.
+2.  Allez dans **Intégrations** > Menu (3 points) > **Dépôts personnalisés**.
+3.  Ajoutez l'URL de ce dépôt : `https://github.com/hal01/ileo_direct`.
+4.  Catégorie : **Intégration**.
+5.  Cliquez sur **Télécharger**.
+6.  **Redémarrez Home Assistant**.
+
+### Installation Manuelle
+
+1.  Téléchargez la dernière version.
+2.  Copiez le dossier `custom_components/ileo_direct` dans votre dossier `/config/custom_components/`.
+3.  Redémarrez Home Assistant.
+
+## ⚙️ Configuration
+
+Plus besoin d'éditer des fichiers YAML !
+
+1.  Allez dans **Paramètres** > **Appareils et services**.
+2.  Cliquez sur **+ Ajouter une intégration**.
+3.  Recherchez **Iléo Water Direct**.
+4.  Remplissez le formulaire :
+    * **Email** : Votre identifiant Iléo.
+    * **Mot de passe** : Votre mot de passe.
+    * **Réécrire l'historique** (Optionnel) : Cochez cette case *uniquement* si vous configurez votre Dashboard Énergie pour la première fois et souhaitez importer les 6 mois passés. *Attention : si vous avez déjà des données, cela peut créer des doublons.*
+
+## 📊 Utilisation
+
+### Dashboard Énergie
+1.  Allez dans **Paramètres** > **Tableaux de bord** > **Énergie**.
+2.  Dans la section **Consommation d'eau**, cliquez sur "Ajouter une source".
+3.  Sélectionnez le capteur : `sensor.index_compteur` (ou nom similaire).
+
+### Carte Graphique (Lovelace)
+Pour visualiser votre consommation journalière historique :
 
 ```yaml
-sensor:
-  - platform: ileo_direct
-    username: "votre_email@exemple.com"
-    password: "votre_mot_de_passe"
+type: statistics-graph
+title: Consommation Eau (6 mois)
+days_to_show: 180
+period: day
+chart_type: bar
+stat_type: mean
+entities:
+  - sensor.conso_jour
