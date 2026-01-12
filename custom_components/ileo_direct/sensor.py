@@ -24,9 +24,11 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Configuration des capteurs depuis l'entrée de config."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # Récupération de l'option "Importer historique énergie"
-    # On regarde dans 'options' en priorité (si modifié via le bouton Configurer), sinon dans 'data'
-    import_history_energy = entry.options.get("import_history_energy", entry.data.get("import_history_energy", False))
+    # On récupère l'option dans 'options' (si modifié) ou 'data' (initial)
+    import_history_energy = entry.options.get(
+        "import_history_energy", 
+        entry.data.get("import_history_energy", False)
+    )
     username = entry.data["username"]
 
     async_add_entities([
@@ -71,12 +73,10 @@ class IleoIndexSensor(IleoSensorBase):
 
     @callback
     def _handle_coordinator_update(self):
-        """Appelé quand le coordinateur a de nouvelles données."""
-        # On met à jour l'état du capteur (Synchrone)
+        """CORRECTIF ICI : Fonction synchrone (@callback) qui lance une tâche de fond."""
         super()._handle_coordinator_update()
-        
-        # On lance l'injection d'historique en tâche de fond (Asynchrone)
         if self._import_history:
+            # On lance l'injection sans bloquer le reste
             self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
@@ -125,13 +125,11 @@ class IleoVolumeSensor(IleoSensorBase):
 
     @callback
     def _handle_coordinator_update(self):
-        """Appelé quand le coordinateur a de nouvelles données."""
+        """CORRECTIF ICI : Fonction synchrone (@callback)"""
         super()._handle_coordinator_update()
-        # Lancement asynchrone sécurisé
         self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
-        """Toujours injecter l'historique pour le volume."""
         if not self.coordinator.historical_rows: return
         stats = []
         for row in self.coordinator.historical_rows:
