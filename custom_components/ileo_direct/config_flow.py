@@ -17,6 +17,7 @@ class IleoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Lie le flux d'options à l'entrée de configuration."""
+        # On passe config_entry au constructeur
         return IleoOptionsFlowHandler(config_entry)
 
     async def async_step_user(self, user_input=None):
@@ -53,7 +54,11 @@ class IleoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class IleoOptionsFlowHandler(config_entries.OptionsFlow):
     """Gère le bouton 'Configurer'."""
 
-    # PLUS DE __init__ ICI : HA gère l'injection de config_entry automatiquement.
+    def __init__(self, config_entry):
+        """Initialisation."""
+        # On stocke l'entrée dans une variable AVEC UN UNDERSCORE (_config_entry)
+        # pour ne pas entrer en conflit avec la propriété protégée de Home Assistant.
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         errors = {}
@@ -67,27 +72,26 @@ class IleoOptionsFlowHandler(config_entries.OptionsFlow):
             try:
                 await coordinator._async_update_data()
                 
-                # Mise à jour des données
+                # Mise à jour des données en utilisant self._config_entry
                 self.hass.config_entries.async_update_entry(
-                    self.config_entry, 
+                    self._config_entry, 
                     data=user_input,
                     title=user_input[CONF_USERNAME]
                 )
                 
                 # Rechargement
-                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                await self.hass.config_entries.async_reload(self._config_entry.entry_id)
                 return self.async_create_entry(title="", data={})
             except Exception:
                 errors["base"] = "invalid_auth"
 
-        # On utilise self.config_entry directement (il est fourni par HA)
-        current_user = self.config_entry.data.get(CONF_USERNAME)
-        current_pass = self.config_entry.data.get(CONF_PASSWORD)
+        # Lecture des valeurs actuelles via self._config_entry
+        current_user = self._config_entry.data.get(CONF_USERNAME)
+        current_pass = self._config_entry.data.get(CONF_PASSWORD)
         
-        # On regarde dans 'options' (si déjà modifié) sinon dans 'data' (valeur initiale)
-        current_hist = self.config_entry.options.get(
+        current_hist = self._config_entry.options.get(
             "import_history_energy", 
-            self.config_entry.data.get("import_history_energy", False)
+            self._config_entry.data.get("import_history_energy", False)
         )
 
         options_schema = vol.Schema({
