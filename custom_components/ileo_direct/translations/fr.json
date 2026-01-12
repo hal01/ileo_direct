@@ -7,7 +7,7 @@
                 "data": {
                     "username": "Email",
                     "password": "Mot de passe",
-                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie (Risque de doublons)"
+                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie"
                 }
             }
         },
@@ -16,6 +16,22 @@
         },
         "abort": {
             "already_configured": "Ce compte est déjà configuré."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Modifier les identifiants",
+                "description": "Modifiez vos accès ici. L'intégration sera rechargée automatiquement.",
+                "data": {
+                    "username": "Nouvel Email",
+                    "password": "Nouveau Mot de passe",
+                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie"
+                }
+            }
+        },
+        "error": {
+            "invalid_auth": "Impossible de se connecter avec ces nouveaux identifiants."
         }
     }
 }
