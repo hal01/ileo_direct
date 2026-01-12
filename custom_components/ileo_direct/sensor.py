@@ -7,6 +7,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfVolume
+from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 from homeassistant.components.recorder.statistics import (
     async_import_statistics,
@@ -24,7 +25,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
     # Récupération de l'option "Importer historique énergie"
-    import_history_energy = entry.data.get("import_history_energy", False)
+    # On regarde dans 'options' en priorité (si modifié via le bouton Configurer), sinon dans 'data'
+    import_history_energy = entry.options.get("import_history_energy", entry.data.get("import_history_energy", False))
     username = entry.data["username"]
 
     async_add_entities([
@@ -67,11 +69,15 @@ class IleoIndexSensor(IleoSensorBase):
         if not row: return {}
         return {"date_releve": row[self.coordinator.idx_date]}
 
-    async def _handle_coordinator_update(self):
+    @callback
+    def _handle_coordinator_update(self):
         """Appelé quand le coordinateur a de nouvelles données."""
-        await super()._handle_coordinator_update()
+        # On met à jour l'état du capteur (Synchrone)
+        super()._handle_coordinator_update()
+        
+        # On lance l'injection d'historique en tâche de fond (Asynchrone)
         if self._import_history:
-            await self._inject_history()
+            self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
         if not self.coordinator.historical_rows: return
@@ -117,9 +123,12 @@ class IleoVolumeSensor(IleoSensorBase):
             return float(vol_str)
         except: return None
 
-    async def _handle_coordinator_update(self):
-        await super()._handle_coordinator_update()
-        await self._inject_history()
+    @callback
+    def _handle_coordinator_update(self):
+        """Appelé quand le coordinateur a de nouvelles données."""
+        super()._handle_coordinator_update()
+        # Lancement asynchrone sécurisé
+        self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
         """Toujours injecter l'historique pour le volume."""
