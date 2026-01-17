@@ -24,7 +24,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Configuration des capteurs depuis l'entrée de config."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
     
-    # On récupère l'option dans 'options' (si modifié) ou 'data' (initial)
+    # Récupération de l'option (priorité aux options modifiées via l'UI, sinon config initiale)
     import_history_energy = entry.options.get(
         "import_history_energy", 
         entry.data.get("import_history_energy", False)
@@ -61,6 +61,7 @@ class IleoIndexSensor(IleoSensorBase):
         row = self.coordinator.data
         if not row: return None
         try:
+            # Nettoyage de la valeur (enlève tout sauf les chiffres)
             clean_idx = ''.join(filter(str.isdigit, row[self.coordinator.idx_index]))
             return int(clean_idx)
         except: return None
@@ -73,13 +74,15 @@ class IleoIndexSensor(IleoSensorBase):
 
     @callback
     def _handle_coordinator_update(self):
-        """CORRECTIF ICI : Fonction synchrone (@callback) qui lance une tâche de fond."""
+        """Mise à jour de l'état (Synchrone) + Lancement historique (Asynchrone)."""
         super()._handle_coordinator_update()
-        if self._import_history:
-            # On lance l'injection sans bloquer le reste
+        
+        # C'est ici que la correction opère : on lance la tâche de fond proprement
+        if self._import_history and self.hass:
             self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
+        """Injection des statistiques dans le recorder."""
         if not self.coordinator.historical_rows: return
         stats = []
         for row in self.coordinator.historical_rows:
@@ -119,17 +122,22 @@ class IleoVolumeSensor(IleoSensorBase):
         if not row: return None
         try:
             vol_str = row[self.coordinator.idx_vol].replace(',', '.').replace(' ', '')
+            # Garde uniquement chiffres, point et signe moins
             vol_str = ''.join(c for c in vol_str if c.isdigit() or c == '.' or c == '-')
             return float(vol_str)
         except: return None
 
     @callback
     def _handle_coordinator_update(self):
-        """CORRECTIF ICI : Fonction synchrone (@callback)"""
+        """Mise à jour de l'état (Synchrone) + Lancement historique (Asynchrone)."""
         super()._handle_coordinator_update()
-        self.hass.async_create_task(self._inject_history())
+        
+        # Correction identique ici pour le volume
+        if self.hass:
+            self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
+        """Injection de l'historique volume."""
         if not self.coordinator.historical_rows: return
         stats = []
         for row in self.coordinator.historical_rows:
@@ -137,9 +145,11 @@ class IleoVolumeSensor(IleoSensorBase):
                 d_str = row[self.coordinator.idx_date]
                 dt_naive = datetime.strptime(d_str, "%d/%m/%Y")
                 dt_utc = dt_util.as_utc(datetime.combine(dt_naive.date(), time(12, 0)))
+                
                 vol_str = row[self.coordinator.idx_vol].replace(',', '.').replace(' ', '')
                 vol_str = ''.join(c for c in vol_str if c.isdigit() or c == '.' or c == '-')
                 vol_val = float(vol_str)
+                
                 stats.append(StatisticData(start=dt_utc, state=vol_val))
             except: continue
 
