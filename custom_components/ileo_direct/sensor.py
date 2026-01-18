@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo."""
+"""Plateforme de capteurs Iléo - Logique V1.0.0 restaurée."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -9,10 +9,21 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
-from homeassistant.components.recorder.statistics import (
-    async_import_statistics,
-    StatisticMetaData,
-)
+
+# Gestion compatibilité
+try:
+    from homeassistant.components.recorder.statistics import (
+        async_import_statistics,
+        StatisticMetaData,
+        StatisticMeanType,
+    )
+except ImportError:
+    from homeassistant.components.recorder.statistics import (
+        async_import_statistics,
+        StatisticMetaData,
+    )
+    StatisticMeanType = None
+
 from homeassistant.components.recorder.models import StatisticData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -21,14 +32,8 @@ from .const import DOMAIN
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Configuration des capteurs depuis l'entrée de config."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    
-    # Récupération de l'option (priorité aux options modifiées via l'UI, sinon config initiale)
-    import_history_energy = entry.options.get(
-        "import_history_energy", 
-        entry.data.get("import_history_energy", False)
-    )
+    import_history_energy = entry.options.get("import_history_energy", entry.data.get("import_history_energy", False))
     username = entry.data["username"]
 
     async_add_entities([
@@ -36,17 +41,22 @@ async def async_setup_entry(hass, entry, async_add_entities):
         IleoVolumeSensor(coordinator, username)
     ], True)
 
+def _parse_date(date_str):
+    if not date_str: return None
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(date_str, fmt)
+        except ValueError:
+            continue
+    return None
 
 class IleoSensorBase(CoordinatorEntity):
-    """Base pour les capteurs Iléo."""
     def __init__(self, coordinator, username):
         super().__init__(coordinator)
         self._username = username
         self._attr_has_entity_name = True
 
 class IleoIndexSensor(IleoSensorBase):
-    """Capteur 1 : INDEX."""
-    
     def __init__(self, coordinator, username, import_history):
         super().__init__(coordinator, username)
         self._import_history = import_history
@@ -61,53 +71,59 @@ class IleoIndexSensor(IleoSensorBase):
         row = self.coordinator.data
         if not row: return None
         try:
-            # Nettoyage de la valeur (enlève tout sauf les chiffres)
-            clean_idx = ''.join(filter(str.isdigit, row[self.coordinator.idx_index]))
+            # LOGIQUE V1.0.0 EXACTE
+            # On utilise l'index trouvé dynamiquement par le coordinateur
+            idx_col = self.coordinator.idx_index
+            
+            # Nettoyage simple V1
+            clean_idx = ''.join(filter(str.isdigit, row[idx_col]))
             return int(clean_idx)
-        except: return None
+        except Exception as e:
+            _LOGGER.error("Erreur lecture Index (V1 Logic): %s", e)
+            return None
 
     @property
     def extra_state_attributes(self):
         row = self.coordinator.data
         if not row: return {}
-        return {"date_releve": row[self.coordinator.idx_date]}
+        try:
+            return {"date_releve": row[self.coordinator.idx_date]}
+        except: return {}
 
     @callback
     def _handle_coordinator_update(self):
-        """Mise à jour de l'état (Synchrone) + Lancement historique (Asynchrone)."""
         super()._handle_coordinator_update()
-        
-        # C'est ici que la correction opère : on lance la tâche de fond proprement
         if self._import_history and self.hass:
             self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
-        """Injection des statistiques dans le recorder."""
         if not self.coordinator.historical_rows: return
         stats = []
+        idx_date = self.coordinator.idx_date
+        idx_col = self.coordinator.idx_index
+
         for row in self.coordinator.historical_rows:
             try:
-                d_str = row[self.coordinator.idx_date]
-                dt_naive = datetime.strptime(d_str, "%d/%m/%Y")
+                dt_naive = _parse_date(row[idx_date])
+                if not dt_naive: continue
                 dt_utc = dt_util.as_utc(datetime.combine(dt_naive.date(), time(12, 0)))
-                idx_val = int(''.join(filter(str.isdigit, row[self.coordinator.idx_index])))
+                
+                # Nettoyage V1
+                clean_idx = ''.join(filter(str.isdigit, row[idx_col]))
+                idx_val = int(clean_idx)
+                
                 stats.append(StatisticData(start=dt_utc, state=idx_val, sum=idx_val))
-            except: continue
+            except Exception: continue
 
         if stats:
             metadata = StatisticMetaData(
-                has_mean=False,
-                has_sum=True,
-                name=self.name,
-                source="recorder",
-                statistic_id=self.entity_id,
-                unit_of_measurement=UnitOfVolume.LITERS,
+                has_mean=False, has_sum=True, name=self.name, source="recorder",
+                statistic_id=self.entity_id, unit_of_measurement=UnitOfVolume.LITERS,
+                unit_class="volume",
             )
             async_import_statistics(self.hass, metadata, stats)
 
 class IleoVolumeSensor(IleoSensorBase):
-    """Capteur 2 : VOLUME."""
-    
     def __init__(self, coordinator, username):
         super().__init__(coordinator, username)
         self._attr_name = "Conso Jour"
@@ -121,45 +137,46 @@ class IleoVolumeSensor(IleoSensorBase):
         row = self.coordinator.data
         if not row: return None
         try:
-            vol_str = row[self.coordinator.idx_vol].replace(',', '.').replace(' ', '')
-            # Garde uniquement chiffres, point et signe moins
-            vol_str = ''.join(c for c in vol_str if c.isdigit() or c == '.' or c == '-')
-            return float(vol_str)
-        except: return None
+            # LOGIQUE V1.0.0 EXACTE
+            idx_col = self.coordinator.idx_vol
+            val_str = row[idx_col].replace(',', '.').replace(' ', '')
+            val_str = ''.join(c for c in val_str if c.isdigit() or c == '.' or c == '-')
+            return float(val_str)
+        except Exception as e:
+            _LOGGER.error("Erreur lecture Volume (V1 Logic): %s", e)
+            return None
 
     @callback
     def _handle_coordinator_update(self):
-        """Mise à jour de l'état (Synchrone) + Lancement historique (Asynchrone)."""
         super()._handle_coordinator_update()
-        
-        # Correction identique ici pour le volume
         if self.hass:
             self.hass.async_create_task(self._inject_history())
 
     async def _inject_history(self):
-        """Injection de l'historique volume."""
         if not self.coordinator.historical_rows: return
         stats = []
+        idx_date = self.coordinator.idx_date
+        idx_col = self.coordinator.idx_vol
+
         for row in self.coordinator.historical_rows:
             try:
-                d_str = row[self.coordinator.idx_date]
-                dt_naive = datetime.strptime(d_str, "%d/%m/%Y")
+                dt_naive = _parse_date(row[idx_date])
+                if not dt_naive: continue
                 dt_utc = dt_util.as_utc(datetime.combine(dt_naive.date(), time(12, 0)))
                 
-                vol_str = row[self.coordinator.idx_vol].replace(',', '.').replace(' ', '')
-                vol_str = ''.join(c for c in vol_str if c.isdigit() or c == '.' or c == '-')
-                vol_val = float(vol_str)
+                # Nettoyage V1
+                val_str = row[idx_col].replace(',', '.').replace(' ', '')
+                val_str = ''.join(c for c in val_str if c.isdigit() or c == '.' or c == '-')
                 
-                stats.append(StatisticData(start=dt_utc, state=vol_val))
-            except: continue
+                stats.append(StatisticData(start=dt_utc, state=float(val_str)))
+            except Exception: continue
 
         if stats:
+            mean_type = StatisticMeanType.ARITHMETIC if StatisticMeanType else "geometric"
             metadata = StatisticMetaData(
-                has_mean=True,
-                has_sum=False,
-                name=self.name,
-                source="recorder",
-                statistic_id=self.entity_id,
-                unit_of_measurement=UnitOfVolume.LITERS,
+                has_mean=True, has_sum=False, name=self.name, source="recorder",
+                statistic_id=self.entity_id, unit_of_measurement=UnitOfVolume.LITERS,
+                mean_type=mean_type,
+                unit_class="volume",
             )
             async_import_statistics(self.hass, metadata, stats)

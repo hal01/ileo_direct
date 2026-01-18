@@ -1,4 +1,4 @@
-"""Coordinateur de données Iléo."""
+"""Coordinateur de données Iléo - Logique V1.0.0."""
 import logging
 import csv
 import io
@@ -17,19 +17,18 @@ class IleoCoordinator(DataUpdateCoordinator):
     """Gère la récupération des données CSV."""
 
     def __init__(self, hass, session, username, password):
-        """Initialisation."""
         super().__init__(hass, _LOGGER, name="Ileo Coordinator", update_interval=SCAN_INTERVAL)
         self.session = session
         self.username = username
         self.password = password
         
+        # Valeurs par défaut (sécurité v1)
         self.idx_date = 0
         self.idx_index = 3
         self.idx_vol = 2
         self.historical_rows = [] 
 
     async def _async_update_data(self):
-        """Récupération des données."""
         try:
             # 1. Login
             payload = {
@@ -60,9 +59,9 @@ class IleoCoordinator(DataUpdateCoordinator):
                 content = await resp.text(encoding='ISO-8859-1')
 
             if not content or "html" in content.lower():
-                raise UpdateFailed("Identifiants incorrects ou Erreur Site (HTML reçu)")
+                raise UpdateFailed("Format CSV invalide (HTML reçu)")
 
-            # 3. Parsing
+            # 3. Parsing (Exactement comme v1.0.0)
             f = io.StringIO(content)
             try:
                 dialect = csv.Sniffer().sniff(content[:1024])
@@ -77,14 +76,16 @@ class IleoCoordinator(DataUpdateCoordinator):
 
             headers = [h.lower() for h in rows[0]]
             
-            # Recherche dynamique des colonnes
+            # REPRISE LOGIQUE V1 : Recherche dynamique des colonnes
             self.idx_date = next((i for i, h in enumerate(headers) if "date" in h), 0)
             self.idx_index = next((i for i, h in enumerate(headers) if "index" in h or "relevé" in h), 3)
+            # On cherche 'volume' ou 'consommation'
             self.idx_vol = next((i for i, h in enumerate(headers) if "volume" in h or "consommation" in h), 2)
 
-            # Stockage
             self.historical_rows = rows[1:] 
-            return rows[-1] # Renvoie la dernière ligne pour les capteurs
+            
+            # On renvoie la dernière ligne
+            return rows[-1]
 
         except Exception as e:
             raise UpdateFailed(f"Erreur update: {e}")
