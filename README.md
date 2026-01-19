@@ -16,6 +16,13 @@ Cette intégration se connecte à votre espace client, récupère votre index et
     * `sensor.index_compteur` : Pour le suivi total.
     * `sensor.conso_jour` : Pour l'analyse quotidienne (en Litres).
 
+## 🚩 Pré-Requis
+
+* Etre équipé d'un **compteur connecté** ILEO 😁!
+* Avoir un compte et un **espace personnel ILEO** créé et accessible avec identifiants et mots de passe.
+     ==> vérifier que l'on accède via : `https://www.mel-ileo.fr/espaceperso/mes-consommations.aspx`
+* S'assurer que des données sont **déjà présentes** dans l'espace consommation ! 
+
 ## 🚀 Installation
 
 ### Via HACS (Recommandé)
