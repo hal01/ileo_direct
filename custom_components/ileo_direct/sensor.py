@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version V18 (Fix Deprecation MeanType)."""
+"""Plateforme de capteurs Iléo - Version V19 (Fix Device Class Conflict)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -17,7 +17,7 @@ try:
         async_import_statistics,
         get_last_statistics,
         StatisticMetaData,
-        StatisticMeanType, # Import nécessaire pour la correction
+        StatisticMeanType,
     )
 except ImportError:
     from homeassistant.components.recorder.statistics import (
@@ -108,7 +108,8 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"ileo_conso_jour_{username}"
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
         self._attr_device_class = SensorDeviceClass.WATER
-        self._attr_state_class = SensorStateClass.MEASUREMENT 
+        # CORRECTION : Passage de MEASUREMENT à TOTAL pour compatibilité WATER
+        self._attr_state_class = SensorStateClass.TOTAL 
         self._attr_icon = "mdi:water"
 
     @property
@@ -124,7 +125,7 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
         return {}
 
 # ==============================================================================
-# 3. SENSOR : Ileo Index Mode Ghost (Intelligent & Sélectif)
+# 3. SENSOR : Ileo Index Mode Ghost (Injecteur)
 # ==============================================================================
 class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, username, import_all_history):
@@ -199,5 +200,5 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 unit_of_measurement=UnitOfVolume.LITERS,
                 unit_class="volume",
             )
-            # CORRECTION : Ajout de mean_type=None pour supprimer le warning
+            # Protection contre le warning mean_type
             async_import_statistics(self.hass, metadata, stats_to_inject, mean_type=None)
