@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version Finale (Gestion Historique Sélective)."""
+"""Plateforme de capteurs Iléo - Version V18 (Fix Deprecation MeanType)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -10,13 +10,14 @@ from homeassistant.const import UnitOfVolume
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 
-# Gestion Recorder
+# Gestion Recorder et Statistiques
 from homeassistant.components.recorder import get_instance
 try:
     from homeassistant.components.recorder.statistics import (
         async_import_statistics,
         get_last_statistics,
         StatisticMetaData,
+        StatisticMeanType, # Import nécessaire pour la correction
     )
 except ImportError:
     from homeassistant.components.recorder.statistics import (
@@ -24,6 +25,7 @@ except ImportError:
         get_last_statistics,
         StatisticMetaData,
     )
+    StatisticMeanType = None
 
 from homeassistant.components.recorder.models import StatisticData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -37,34 +39,21 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     username = entry.data["username"]
     
-    # Récupération de l'option "Réécrire l'historique" (Case à cocher)
-    # On cherche dans options (si modifié après coup) ou data (si installation initiale)
     import_all_history = entry.options.get(
         "import_history_energy", 
         entry.data.get("import_history_energy", False)
     )
     
     async_add_entities([
-        # 1. Le Compteur (Index officiel)
         IleoCompteurIndex(coordinator, username),
-        
-        # 2. La Consommation (Journalière)
         IleoConsommationJournaliere(coordinator, username),
-        
-        # 3. Le Mode Ghost (Injecteur Historique avec Option)
         IleoIndexModeGhost(coordinator, username, import_all_history)
     ], True)
 
-# --- OUTILS ---
-
 def _extract_data(row):
-    """
-    Extrait et nettoie les données d'une ligne CSV brute.
-    Retourne: (datetime_object, consommation_float, index_int)
-    """
+    """Extraction et nettoyage des données CSV."""
     if not row or len(row) < 4:
         return None, None, None
-    
     try:
         dt = None
         for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
@@ -74,17 +63,13 @@ def _extract_data(row):
             except ValueError:
                 continue
         if not dt: return None, None, None
-
         conso_str = str(row[1]).replace(',', '.').strip()
         conso = float(conso_str)
-
         idx_clean = ''.join(filter(str.isdigit, str(row[3])))
         index = int(idx_clean)
-
         return dt, conso, index
     except Exception:
         return None, None, None
-
 
 # ==============================================================================
 # 1. SENSOR : Ileo Compteur Eau (Index)
@@ -112,7 +97,6 @@ class IleoCompteurIndex(CoordinatorEntity, SensorEntity):
             return {"date_du_releve": dt.strftime("%d/%m/%Y"), "conso_jour": conso}
         return {}
 
-
 # ==============================================================================
 # 2. SENSOR : Ileo Consommation Eau (journalière)
 # ==============================================================================
@@ -139,21 +123,13 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
             return {"date_du_releve": dt.strftime("%d/%m/%Y"), "index": index}
         return {}
 
-
 # ==============================================================================
 # 3. SENSOR : Ileo Index Mode Ghost (Intelligent & Sélectif)
 # ==============================================================================
 class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
-    """
-    Injecteur Statistique Pur.
-    - Vérifie la DB avant d'injecter.
-    - Si DB vide + Option cochée : Injecte TOUT (6 mois).
-    - Si DB vide + Option NON cochée : Injecte le DERNIER point seulement.
-    - Si DB existante : Injecte uniquement les NOUVELLES données.
-    """
     def __init__(self, coordinator, username, import_all_history):
         super().__init__(coordinator)
-        self._import_all_history = import_all_history  # Stockage de l'option
+        self._import_all_history = import_all_history
         self._attr_has_entity_name = True
         self._attr_name = "Ileo Index Mode Ghost"
         self._attr_unique_id = f"ileo_mode_ghost_{username}" 
@@ -164,7 +140,7 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        return None # Pas d'état court terme
+        return None
 
     @callback
     def _handle_coordinator_update(self):
@@ -175,17 +151,14 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
     async def _inject_history_logic(self):
         if not self.coordinator.historical_rows: return
         
-        # 1. Préparation des données propres
         clean_history = []
         for row in self.coordinator.historical_rows:
             dt_obj, _, idx = _extract_data(row)
             if dt_obj and idx is not None:
                 clean_history.append({'date': dt_obj, 'val': idx})
-        
         clean_history.sort(key=lambda x: x['date'])
         if not clean_history: return
 
-        # 2. Vérification DB (Dernière date connue)
         last_stats_date = None
         stat_id = self.entity_id
 
@@ -193,61 +166,38 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             last_stat = await get_instance(self.hass).async_add_executor_job(
                 get_last_statistics, self.hass, 1, stat_id, True, {"start"}
             )
-            
             if last_stat and stat_id in last_stat and last_stat[stat_id]:
                 start_ts = last_stat[stat_id][0]["start"]
-                if isinstance(start_ts, (int, float)):
-                    last_stats_date = dt_util.utc_from_timestamp(start_ts)
-                else:
-                    last_stats_date = dt_util.as_utc(start_ts)
-                
-                _LOGGER.debug(f"Ghost: Dernière date DB (UTC) : {last_stats_date}")
-
+                last_stats_date = dt_util.utc_from_timestamp(start_ts) if isinstance(start_ts, (int, float)) else dt_util.as_utc(start_ts)
         except Exception as e:
             _LOGGER.warning(f"Ghost: Erreur lecture DB : {e}")
             return
 
-        # 3. Filtrage Intelligent (Le cœur de votre demande)
         rows_to_process = []
-        
         if last_stats_date is None:
-            # CAS A : Base Vide (Premier lancement)
-            if self._import_all_history:
-                # Option Cochée -> On charge tout le passé
-                _LOGGER.info("Ghost: Init -> Option 'Réécrire historique' ACTIVE -> Import complet.")
-                rows_to_process = clean_history
-            else:
-                # Option NON Cochée -> On prend juste le dernier point pour caler le compteur
-                _LOGGER.info("Ghost: Init -> Option 'Réécrire historique' INACTIVE -> Dernier point uniquement.")
-                if clean_history:
-                    rows_to_process = [clean_history[-1]]
+            rows_to_process = clean_history if self._import_all_history else [clean_history[-1]]
         else:
-            # CAS B : Base Existante (Mise à jour quotidienne)
-            # On ignore la case à cocher, on fait du delta strict
             for item in clean_history:
                 item_utc = dt_util.as_utc(datetime.combine(item['date'].date(), time(12, 0)))
                 if item_utc > last_stats_date:
                     rows_to_process.append(item)
 
-        if not rows_to_process:
-            _LOGGER.debug("Ghost: Rien de nouveau à injecter.")
-            return
+        if not rows_to_process: return
 
-        # 4. Injection
         stats_to_inject = []
         for item in rows_to_process:
             dt_utc = dt_util.as_utc(datetime.combine(item['date'].date(), time(12, 0)))
-            stats_to_inject.append(StatisticData(
-                start=dt_utc, 
-                state=item['val'], 
-                sum=item['val'] # Sum = Index
-            ))
+            stats_to_inject.append(StatisticData(start=dt_utc, state=item['val'], sum=item['val']))
 
         if stats_to_inject:
-            _LOGGER.info(f"Ghost: Injection de {len(stats_to_inject)} entrées.")
             metadata = StatisticMetaData(
-                has_mean=False, has_sum=True, name=self.name, source="recorder",
-                statistic_id=self.entity_id, unit_of_measurement=UnitOfVolume.LITERS,
+                has_mean=False,
+                has_sum=True,
+                name=self.name,
+                source="recorder",
+                statistic_id=self.entity_id,
+                unit_of_measurement=UnitOfVolume.LITERS,
                 unit_class="volume",
             )
-            async_import_statistics(self.hass, metadata, stats_to_inject)
+            # CORRECTION : Ajout de mean_type=None pour supprimer le warning
+            async_import_statistics(self.hass, metadata, stats_to_inject, mean_type=None)
