@@ -6,7 +6,7 @@
 
 # Iléo Direct (MÉL) pour Home Assistant 🌊
 
-Cette intégration personnalisée permet de récupérer vos données de consommation d'eau depuis le portail **Iléo** (Métropole Européenne de Lille) et de les intégrer nativement dans Home Assistant. Elle gère intelligemment le décalage de publication des données pour offrir un suivi historique précis.
+Cette intégration personnalisée permet de récupérer vos données de consommation d'eau depuis le portail **Iléo** (Métropole Européenne de Lille) et de les intégrer nativement dans Home Assistant. Elle gère intelligemment le décalage de publication des données pour offrir un suivi historique précis ou au choix un index de compteur a intégrer au jour le jour.
 
 ## 🚀 Installation
 
@@ -46,7 +46,7 @@ L'intégration génère trois capteurs pour répondre à tous vos besoins :
 | **Ileo Consommation Eau (journalière)** | `sensor.ileo_consommation_eau_journaliere` | ✅ Litres | Affichage de la consommation du dernier relevé connu. |
 | **Ileo Index Mode Ghost** | `sensor.ileo_index_mode_ghost` | ❌ Unknown | **Exclusif au Tableau de bord Énergie.** |
 
-### Focus sur le Mode Ghost (Logic V17) 👻
+### Focus sur le Mode Ghost (valeurs uniquement visibles dans les statistiques long terme) 👻
 Ce capteur est un "injecteur statistique pur". Son état court terme reste délibérément `Unknown` pour ne pas polluer votre base de données courante. Il travaille en arrière-plan pour injecter vos index directement dans la table des **statistiques à long terme** à la date exacte de consommation trouvée sur Iléo.
 
 ---
@@ -60,7 +60,8 @@ Pour un suivi précis, configurez votre consommation d'eau comme suit :
 3. **Méthode Recommandée** : Choisissez le capteur **`Ileo Index Mode Ghost`**.
    * Grâce à l'injection statistique, vos 200L consommés le lundi apparaîtront sur la colonne du lundi, même si Iléo ne publie l'info que le mercredi.
 4. **Méthode Alternative** : Utilisez `Ileo Compteur Eau (Index)`. La consommation sera alors enregistrée au moment de la synchronisation (souvent avec 2 jours de décalage).
-
+5. Après la mise a jour, il est recommandé d'utiliser l'outil statistiques présent dans le menu "outils de développement" pour corriger les valeurs abérantes ; c'est a dire souvent la première valeur intégrée qui donne une consommation en litre égale à l'index, alors que les suivantes sont basées sur une différence d'index.
+6. Dans le cas d'ajout des couts, il faudra attendre au moins 2 jours pour voir des couts arriver.
 ---
 
 ## 💡 Astuces Utiles
