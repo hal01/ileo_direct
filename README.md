@@ -59,10 +59,13 @@ Pour un suivi précis, configurez votre consommation d'eau comme suit :
 2. Dans la section **Consommation d'eau**, ajoutez une source.
 3. **Méthode Recommandée** : Choisissez le capteur **`Ileo Index Mode Ghost`**.
    * Grâce à l'injection statistique, vos 200L consommés le lundi apparaîtront sur la colonne du lundi, même si Iléo ne publie l'info que le mercredi.
-4. **Méthode Alternative** : Utilisez `Ileo Compteur Eau (Index)`. La consommation sera alors enregistrée au moment de la synchronisation (souvent avec 2 jours de décalage).
+   * A noter que ce mode est plus précis sur les dates de consommation, mais ne permet pas d'utiliser les couts.
+4. **Méthode Alternative** : Utilisez `Ileo Compteur Eau (Index)`. La consommation sera alors enregistrée au moment de la synchronisation (souvent avec 2 jours de décalage). Ainsi, la consommation du Lundi etant récupérée le Mercredi, elle apparaitra le Mercredi.
 5. Après la mise a jour, il est recommandé d'utiliser l'outil statistiques présent dans le menu "outils de développement" pour corriger les valeurs abérantes ; c'est a dire souvent la première valeur intégrée qui donne une consommation en litre égale à l'index, alors que les suivantes sont basées sur une différence d'index.
-6. Dans le cas d'ajout des couts, il faudra attendre au moins 2 jours pour voir des couts arriver.
----
+
+En synthèse pour le choix du capteur du tableau énergie : 
+   *Si la priorité c'est la consommation positionnée a la bonne date et avec un historique ==> **`Ileo Index Mode Ghost`**.
+   * Si la priorité c'est une conso globale sur une periode avec gestion des coûts ==> **`Ileo Compteur Eau (Index)`**.
 
 ## 💡 Astuces Utiles
 

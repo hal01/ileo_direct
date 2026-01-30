@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version V19 (Fix Device Class Conflict)."""
+"""Plateforme de capteurs Iléo - Version V22 (Fix Warning & Database)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -17,7 +17,7 @@ try:
         async_import_statistics,
         get_last_statistics,
         StatisticMetaData,
-        StatisticMeanType,
+        StatisticMeanType, # On en a besoin pour le "Mensonge Pieux"
     )
 except ImportError:
     from homeassistant.components.recorder.statistics import (
@@ -25,7 +25,7 @@ except ImportError:
         get_last_statistics,
         StatisticMetaData,
     )
-    StatisticMeanType = None
+    StatisticMeanType = None # Fallback si ancienne version HA
 
 from homeassistant.components.recorder.models import StatisticData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -83,7 +83,7 @@ class IleoCompteurIndex(CoordinatorEntity, SensorEntity):
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
         self._attr_device_class = SensorDeviceClass.WATER
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        self._attr_icon = "mdi:counter"
+        self._attr_icon = "mdi:faucet"
 
     @property
     def native_value(self):
@@ -108,9 +108,8 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"ileo_conso_jour_{username}"
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
         self._attr_device_class = SensorDeviceClass.WATER
-        # CORRECTION : Passage de MEASUREMENT à TOTAL pour compatibilité WATER
         self._attr_state_class = SensorStateClass.TOTAL 
-        self._attr_icon = "mdi:water"
+        self._attr_icon = "mdi:faucet"
 
     @property
     def native_value(self):
@@ -137,7 +136,7 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
         self._attr_device_class = SensorDeviceClass.WATER
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        self._attr_icon = "mdi:ghost"
+        self._attr_icon = "mdi:faucet-clock"
 
     @property
     def native_value(self):
@@ -191,6 +190,7 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             stats_to_inject.append(StatisticData(start=dt_utc, state=item['val'], sum=item['val']))
 
         if stats_to_inject:
+            # Construction des métadonnées
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -200,5 +200,12 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 unit_of_measurement=UnitOfVolume.LITERS,
                 unit_class="volume",
             )
-            # Protection contre le warning mean_type
-            async_import_statistics(self.hass, metadata, stats_to_inject, mean_type=None)
+            
+            # --- LE FIX V22 ---
+            # On vérifie si on peut utiliser l'Enum
+            if StatisticMeanType is not None:
+                # On force une valeur bidon (ARITHMETIC) mais valide pour la DB.
+                # Comme has_mean=False, HA ignorera cette valeur, mais la DB sera contente.
+                metadata["mean_type"] = StatisticMeanType.ARITHMETIC
+            
+            async_import_statistics(self.hass, metadata, stats_to_inject)
