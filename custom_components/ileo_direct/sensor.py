@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version V22 (Fix Warning & Database)."""
+"""Plateforme de capteurs Iléo - Version V23 (Non-Blocking Startup)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -17,7 +17,7 @@ try:
         async_import_statistics,
         get_last_statistics,
         StatisticMetaData,
-        StatisticMeanType, # On en a besoin pour le "Mensonge Pieux"
+        StatisticMeanType,
     )
 except ImportError:
     from homeassistant.components.recorder.statistics import (
@@ -25,7 +25,7 @@ except ImportError:
         get_last_statistics,
         StatisticMetaData,
     )
-    StatisticMeanType = None # Fallback si ancienne version HA
+    StatisticMeanType = None
 
 from homeassistant.components.recorder.models import StatisticData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -44,11 +44,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
         entry.data.get("import_history_energy", False)
     )
     
-    async_add_entities([
+    entities = [
         IleoCompteurIndex(coordinator, username),
         IleoConsommationJournaliere(coordinator, username),
         IleoIndexModeGhost(coordinator, username, import_all_history)
-    ], True)
+    ]
+    
+    # CORRECTION V23 : On passe 'False' ici pour ne pas bloquer le démarrage de HA
+    # si le site Iléo est lent à répondre. Les données arriveront en arrière-plan.
+    async_add_entities(entities, False)
 
 def _extract_data(row):
     """Extraction et nettoyage des données CSV."""
@@ -190,7 +194,6 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             stats_to_inject.append(StatisticData(start=dt_utc, state=item['val'], sum=item['val']))
 
         if stats_to_inject:
-            # Construction des métadonnées
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -201,11 +204,8 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 unit_class="volume",
             )
             
-            # --- LE FIX V22 ---
-            # On vérifie si on peut utiliser l'Enum
+            # Hack V22: On force une valeur pour éviter le warning, si dispo
             if StatisticMeanType is not None:
-                # On force une valeur bidon (ARITHMETIC) mais valide pour la DB.
-                # Comme has_mean=False, HA ignorera cette valeur, mais la DB sera contente.
                 metadata["mean_type"] = StatisticMeanType.ARITHMETIC
             
             async_import_statistics(self.hass, metadata, stats_to_inject)
