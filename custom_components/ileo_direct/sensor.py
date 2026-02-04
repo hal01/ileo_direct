@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version V23 (Non-Blocking Startup)."""
+"""Plateforme de capteurs Iléo - Version V26 (Metadonnées Monobloc & Debug)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -9,22 +9,24 @@ from homeassistant.components.sensor import (
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
-
-# Gestion Recorder et Statistiques
 from homeassistant.components.recorder import get_instance
+
+# 1. Import principal (Fonctions de base)
 try:
     from homeassistant.components.recorder.statistics import (
         async_import_statistics,
         get_last_statistics,
         StatisticMetaData,
-        StatisticMeanType,
     )
 except ImportError:
-    from homeassistant.components.recorder.statistics import (
-        async_import_statistics,
-        get_last_statistics,
-        StatisticMetaData,
-    )
+    async_import_statistics = None
+    get_last_statistics = None
+    StatisticMetaData = None
+
+# 2. Import séparé pour le MeanType
+try:
+    from homeassistant.components.recorder.statistics import StatisticMeanType
+except ImportError:
     StatisticMeanType = None
 
 from homeassistant.components.recorder.models import StatisticData
@@ -50,8 +52,6 @@ async def async_setup_entry(hass, entry, async_add_entities):
         IleoIndexModeGhost(coordinator, username, import_all_history)
     ]
     
-    # CORRECTION V23 : On passe 'False' ici pour ne pas bloquer le démarrage de HA
-    # si le site Iléo est lent à répondre. Les données arriveront en arrière-plan.
     async_add_entities(entities, False)
 
 def _extract_data(row):
@@ -155,6 +155,10 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
     async def _inject_history_logic(self):
         if not self.coordinator.historical_rows: return
         
+        if async_import_statistics is None:
+            _LOGGER.error("Impossible d'importer les fonctions statistiques.")
+            return
+
         clean_history = []
         for row in self.coordinator.historical_rows:
             dt_obj, _, idx = _extract_data(row)
@@ -175,8 +179,7 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 last_stats_date = dt_util.utc_from_timestamp(start_ts) if isinstance(start_ts, (int, float)) else dt_util.as_utc(start_ts)
         except Exception as e:
             _LOGGER.warning(f"Ghost: Erreur lecture DB : {e}")
-            return
-
+            
         rows_to_process = []
         if last_stats_date is None:
             rows_to_process = clean_history if self._import_all_history else [clean_history[-1]]
@@ -194,6 +197,14 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             stats_to_inject.append(StatisticData(start=dt_utc, state=item['val'], sum=item['val']))
 
         if stats_to_inject:
+            # --- DETERMINATION DE LA VALEUR MEAN_TYPE ---
+            # On calcule la valeur AVANT de créer l'objet metadata
+            mean_val = 1 # Valeur par défaut (Arithmetic) pour la DB
+            if StatisticMeanType is not None:
+                mean_val = StatisticMeanType.ARITHMETIC
+            
+            # --- CONSTRUCTION MONOBLOC ---
+            # On passe tout dans le constructeur pour éviter les oublis
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -202,10 +213,10 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 statistic_id=self.entity_id,
                 unit_of_measurement=UnitOfVolume.LITERS,
                 unit_class="volume",
+                mean_type=mean_val # <--- Intégré dès la naissance !
             )
             
-            # Hack V22: On force une valeur pour éviter le warning, si dispo
-            if StatisticMeanType is not None:
-                metadata["mean_type"] = StatisticMeanType.ARITHMETIC
+            # LOG DEBUG : Pour vérifier ce qu'on envoie si l'erreur revient
+            _LOGGER.debug(f"Ghost V26: Injection de {len(stats_to_inject)} lignes. Metadata mean_type={metadata.get('mean_type')}")
             
             async_import_statistics(self.hass, metadata, stats_to_inject)

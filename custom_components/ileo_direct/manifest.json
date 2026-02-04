@@ -8,5 +8,5 @@
   "codeowners": ["@hal01"],
   "requirements": [],
   "iot_class": "cloud_polling",
-  "version": "2.2.3"
+  "version": "2.2.3b1"
 }
