@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version V26 (Metadonnées Monobloc & Debug)."""
+"""Plateforme de capteurs Iléo - Version V31 (Standard & Clean)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -6,12 +6,15 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
+from homeassistant.components import persistent_notification
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 from homeassistant.components.recorder import get_instance
 
-# 1. Import principal (Fonctions de base)
+_LOGGER = logging.getLogger(__name__)
+
+# Imports statistiques sécurisés
 try:
     from homeassistant.components.recorder.statistics import (
         async_import_statistics,
@@ -23,21 +26,16 @@ except ImportError:
     get_last_statistics = None
     StatisticMetaData = None
 
-# 2. Import séparé pour le MeanType
-try:
-    from homeassistant.components.recorder.statistics import StatisticMeanType
-except ImportError:
-    StatisticMeanType = None
-
 from homeassistant.components.recorder.models import StatisticData
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 
-_LOGGER = logging.getLogger(__name__)
-
 async def async_setup_entry(hass, entry, async_add_entities):
-    """Configuration des capteurs Iléo via l'intégration."""
+    """Configuration des capteurs Iléo."""
+    # Notification de démarrage pour confirmer que la V31 est chargée
+    _LOGGER.info("Démarrage Iléo V31 - Standard")
+    
     coordinator = hass.data[DOMAIN][entry.entry_id]
     username = entry.data["username"]
     
@@ -55,28 +53,22 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities, False)
 
 def _extract_data(row):
-    """Extraction et nettoyage des données CSV."""
-    if not row or len(row) < 4:
-        return None, None, None
+    if not row or len(row) < 4: return None, None, None
     try:
         dt = None
         for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
             try:
                 dt = datetime.strptime(row[0], fmt)
                 break
-            except ValueError:
-                continue
+            except ValueError: continue
         if not dt: return None, None, None
-        conso_str = str(row[1]).replace(',', '.').strip()
-        conso = float(conso_str)
-        idx_clean = ''.join(filter(str.isdigit, str(row[3])))
-        index = int(idx_clean)
+        conso = float(str(row[1]).replace(',', '.').strip())
+        index = int(''.join(filter(str.isdigit, str(row[3]))))
         return dt, conso, index
-    except Exception:
-        return None, None, None
+    except: return None, None, None
 
 # ==============================================================================
-# 1. SENSOR : Ileo Compteur Eau (Index)
+# SENSORS CLASSIQUES
 # ==============================================================================
 class IleoCompteurIndex(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, username):
@@ -93,17 +85,12 @@ class IleoCompteurIndex(CoordinatorEntity, SensorEntity):
     def native_value(self):
         _, _, index = _extract_data(self.coordinator.data)
         return index
-
+        
     @property
     def extra_state_attributes(self):
         dt, conso, _ = _extract_data(self.coordinator.data)
-        if dt:
-            return {"date_du_releve": dt.strftime("%d/%m/%Y"), "conso_jour": conso}
-        return {}
+        return {"date_du_releve": dt.strftime("%d/%m/%Y"), "conso_jour": conso} if dt else {}
 
-# ==============================================================================
-# 2. SENSOR : Ileo Consommation Eau (journalière)
-# ==============================================================================
 class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, username):
         super().__init__(coordinator)
@@ -112,7 +99,7 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"ileo_conso_jour_{username}"
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
         self._attr_device_class = SensorDeviceClass.WATER
-        self._attr_state_class = SensorStateClass.TOTAL 
+        self._attr_state_class = SensorStateClass.TOTAL
         self._attr_icon = "mdi:faucet"
 
     @property
@@ -123,12 +110,10 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         dt, _, index = _extract_data(self.coordinator.data)
-        if dt:
-            return {"date_du_releve": dt.strftime("%d/%m/%Y"), "index": index}
-        return {}
+        return {"date_du_releve": dt.strftime("%d/%m/%Y"), "index": index} if dt else {}
 
 # ==============================================================================
-# 3. SENSOR : Ileo Index Mode Ghost (Injecteur)
+# GHOST SENSOR STANDARD (V31)
 # ==============================================================================
 class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, username, import_all_history):
@@ -138,38 +123,47 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
         self._attr_name = "Ileo Index Mode Ghost"
         self._attr_unique_id = f"ileo_mode_ghost_{username}" 
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
+        
+        # --- RETOUR AUX STANDARDS ---
+        # On remet les classes officielles.
+        # Cela permet au capteur d'être vu nativement dans le Dashboard Énergie.
         self._attr_device_class = SensorDeviceClass.WATER
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        
         self._attr_icon = "mdi:faucet-clock"
 
     @property
-    def native_value(self):
-        return None
+    def native_value(self): return None
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        # On lance l'injection dès le démarrage
+        self.hass.async_create_task(self._inject_history_logic())
 
     @callback
     def _handle_coordinator_update(self):
         super()._handle_coordinator_update()
-        if self.hass:
-            self.hass.async_create_task(self._inject_history_logic())
+        if self.hass: self.hass.async_create_task(self._inject_history_logic())
+
+    async def _notify(self, message):
+        """Notif UI persistante (utile pour confirmer le fonctionnement)."""
+        persistent_notification.async_create(self.hass, message, title="Iléo Ghost V31")
 
     async def _inject_history_logic(self):
         if not self.coordinator.historical_rows: return
-        
-        if async_import_statistics is None:
-            _LOGGER.error("Impossible d'importer les fonctions statistiques.")
-            return
-
+            
         clean_history = []
         for row in self.coordinator.historical_rows:
             dt_obj, _, idx = _extract_data(row)
             if dt_obj and idx is not None:
                 clean_history.append({'date': dt_obj, 'val': idx})
         clean_history.sort(key=lambda x: x['date'])
+        
         if not clean_history: return
 
+        # Vérif DB
         last_stats_date = None
         stat_id = self.entity_id
-
         try:
             last_stat = await get_instance(self.hass).async_add_executor_job(
                 get_last_statistics, self.hass, 1, stat_id, True, {"start"}
@@ -177,11 +171,14 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             if last_stat and stat_id in last_stat and last_stat[stat_id]:
                 start_ts = last_stat[stat_id][0]["start"]
                 last_stats_date = dt_util.utc_from_timestamp(start_ts) if isinstance(start_ts, (int, float)) else dt_util.as_utc(start_ts)
-        except Exception as e:
-            _LOGGER.warning(f"Ghost: Erreur lecture DB : {e}")
-            
+        except Exception:
+            pass
+
+        # Filtrage
         rows_to_process = []
+        is_init = False
         if last_stats_date is None:
+            is_init = True
             rows_to_process = clean_history if self._import_all_history else [clean_history[-1]]
         else:
             for item in clean_history:
@@ -191,20 +188,21 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
 
         if not rows_to_process: return
 
+        # Injection
         stats_to_inject = []
         for item in rows_to_process:
             dt_utc = dt_util.as_utc(datetime.combine(item['date'].date(), time(12, 0)))
             stats_to_inject.append(StatisticData(start=dt_utc, state=item['val'], sum=item['val']))
 
         if stats_to_inject:
-            # --- DETERMINATION DE LA VALEUR MEAN_TYPE ---
-            # On calcule la valeur AVANT de créer l'objet metadata
-            mean_val = 1 # Valeur par défaut (Arithmetic) pour la DB
-            if StatisticMeanType is not None:
-                mean_val = StatisticMeanType.ARITHMETIC
+            if is_init or len(stats_to_inject) > 0:
+                 await self._notify(f"Injection V31: {len(stats_to_inject)} relevés.\nDernier: {stats_to_inject[-1]['state']} L")
             
-            # --- CONSTRUCTION MONOBLOC ---
-            # On passe tout dans le constructeur pour éviter les oublis
+            # --- METADATA STANDARD ---
+            # On ne spécifie PAS "mean_type" ici.
+            # - Cela évite le crash SQL (NOT NULL).
+            # - Cela génère un Warning jaune dans les logs ("deprecated 2026").
+            # - C'est le comportement attendu pour device_class: water.
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -213,10 +211,10 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 statistic_id=self.entity_id,
                 unit_of_measurement=UnitOfVolume.LITERS,
                 unit_class="volume",
-                mean_type=mean_val # <--- Intégré dès la naissance !
             )
             
-            # LOG DEBUG : Pour vérifier ce qu'on envoie si l'erreur revient
-            _LOGGER.debug(f"Ghost V26: Injection de {len(stats_to_inject)} lignes. Metadata mean_type={metadata.get('mean_type')}")
-            
-            async_import_statistics(self.hass, metadata, stats_to_inject)
+            try:
+                async_import_statistics(self.hass, metadata, stats_to_inject)
+            except Exception as e:
+                # Si ça échoue, on prévient l'utilisateur
+                await self._notify(f"Erreur Injection: {e}")
