@@ -1,4 +1,4 @@
-"""Plateforme de capteurs Iléo - Version V31 (Standard & Clean)."""
+"""Plateforme de capteurs Iléo - Version Finale (Clean & Silent)."""
 import logging
 from datetime import datetime, time
 from homeassistant.components.sensor import (
@@ -6,7 +6,6 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.components import persistent_notification
 from homeassistant.const import UnitOfVolume
 from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
@@ -33,9 +32,6 @@ from .const import DOMAIN
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Configuration des capteurs Iléo."""
-    # Notification de démarrage pour confirmer que la V31 est chargée
-    _LOGGER.info("Démarrage Iléo V31 - Standard")
-    
     coordinator = hass.data[DOMAIN][entry.entry_id]
     username = entry.data["username"]
     
@@ -53,6 +49,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities, False)
 
 def _extract_data(row):
+    """Extraction et nettoyage des données CSV."""
     if not row or len(row) < 4: return None, None, None
     try:
         dt = None
@@ -113,7 +110,7 @@ class IleoConsommationJournaliere(CoordinatorEntity, SensorEntity):
         return {"date_du_releve": dt.strftime("%d/%m/%Y"), "index": index} if dt else {}
 
 # ==============================================================================
-# GHOST SENSOR STANDARD (V31)
+# GHOST SENSOR (Production)
 # ==============================================================================
 class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, username, import_all_history):
@@ -124,12 +121,9 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"ileo_mode_ghost_{username}" 
         self._attr_native_unit_of_measurement = UnitOfVolume.LITERS
         
-        # --- RETOUR AUX STANDARDS ---
-        # On remet les classes officielles.
-        # Cela permet au capteur d'être vu nativement dans le Dashboard Énergie.
+        # Configuration standard conforme pour l'eau
         self._attr_device_class = SensorDeviceClass.WATER
         self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-        
         self._attr_icon = "mdi:faucet-clock"
 
     @property
@@ -137,17 +131,12 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
-        # On lance l'injection dès le démarrage
         self.hass.async_create_task(self._inject_history_logic())
 
     @callback
     def _handle_coordinator_update(self):
         super()._handle_coordinator_update()
         if self.hass: self.hass.async_create_task(self._inject_history_logic())
-
-    async def _notify(self, message):
-        """Notif UI persistante (utile pour confirmer le fonctionnement)."""
-        persistent_notification.async_create(self.hass, message, title="Iléo Ghost V31")
 
     async def _inject_history_logic(self):
         if not self.coordinator.historical_rows: return
@@ -172,15 +161,15 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
                 start_ts = last_stat[stat_id][0]["start"]
                 last_stats_date = dt_util.utc_from_timestamp(start_ts) if isinstance(start_ts, (int, float)) else dt_util.as_utc(start_ts)
         except Exception:
-            pass
+            pass # On ignore les erreurs de lecture silencieusement
 
         # Filtrage
         rows_to_process = []
-        is_init = False
         if last_stats_date is None:
-            is_init = True
+            # Base vide : on regarde l'option
             rows_to_process = clean_history if self._import_all_history else [clean_history[-1]]
         else:
+            # Base existante : on ajoute le delta
             for item in clean_history:
                 item_utc = dt_util.as_utc(datetime.combine(item['date'].date(), time(12, 0)))
                 if item_utc > last_stats_date:
@@ -195,14 +184,9 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             stats_to_inject.append(StatisticData(start=dt_utc, state=item['val'], sum=item['val']))
 
         if stats_to_inject:
-            if is_init or len(stats_to_inject) > 0:
-                 await self._notify(f"Injection V31: {len(stats_to_inject)} relevés.\nDernier: {stats_to_inject[-1]['state']} L")
+            _LOGGER.info(f"Ghost Injection: {len(stats_to_inject)} relevés insérés. Dernier index: {stats_to_inject[-1]['state']} L")
             
-            # --- METADATA STANDARD ---
-            # On ne spécifie PAS "mean_type" ici.
-            # - Cela évite le crash SQL (NOT NULL).
-            # - Cela génère un Warning jaune dans les logs ("deprecated 2026").
-            # - C'est le comportement attendu pour device_class: water.
+            # Métadonnées standards (sans hack mean_type)
             metadata = StatisticMetaData(
                 has_mean=False,
                 has_sum=True,
@@ -216,5 +200,4 @@ class IleoIndexModeGhost(CoordinatorEntity, SensorEntity):
             try:
                 async_import_statistics(self.hass, metadata, stats_to_inject)
             except Exception as e:
-                # Si ça échoue, on prévient l'utilisateur
-                await self._notify(f"Erreur Injection: {e}")
+                _LOGGER.error(f"Erreur Injection Ghost: {e}")
