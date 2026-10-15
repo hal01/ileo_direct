@@ -7,7 +7,13 @@
                 "data": {
                     "username": "Email",
                     "password": "Mot de passe",
-                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie"
+                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie",
+                    "water_price": "Prix de l'eau (€/m³)",
+                    "water_price_entity": "Entité de prix de l'eau (facultatif)"
+                },
+                "data_description": {
+                    "water_price": "Prix utilisé pour calculer le coût dans le Tableau Énergie (capteur Ghost). 0 = pas de coût.",
+                    "water_price_entity": "Entité (input_number ou capteur) donnant le prix en €/m³. Prioritaire sur le prix fixe, qui sert de repli si elle est indisponible."
                 }
             }
         },
@@ -26,7 +32,13 @@
                 "data": {
                     "username": "Nouvel Email",
                     "password": "Nouveau Mot de passe",
-                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie"
+                    "import_history_energy": "Réécrire l'historique du Dashboard Énergie",
+                    "water_price": "Prix de l'eau (€/m³)",
+                    "water_price_entity": "Entité de prix de l'eau (facultatif)"
+                },
+                "data_description": {
+                    "water_price": "Prix utilisé pour calculer le coût dans le Tableau Énergie (capteur Ghost). 0 = pas de coût.",
+                    "water_price_entity": "Entité (input_number ou capteur) donnant le prix en €/m³. Prioritaire sur le prix fixe, qui sert de repli si elle est indisponible."
                 }
             }
         },

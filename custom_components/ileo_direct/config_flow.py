@@ -4,9 +4,28 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers import selector
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_WATER_PRICE, CONF_WATER_PRICE_ENTITY
 from .coordinator import IleoCoordinator
+
+def _price_fields(price=0.0, price_entity=None):
+    """Champs du coût de l'eau (prix fixe en €/m³ et/ou entité de prix)."""
+    return {
+        vol.Optional(CONF_WATER_PRICE, default=price): selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0, max=50, step=0.001, unit_of_measurement="€/m³",
+                mode=selector.NumberSelectorMode.BOX,
+            )
+        ),
+        vol.Optional(
+            CONF_WATER_PRICE_ENTITY,
+            description={"suggested_value": price_entity},
+        ): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["input_number", "sensor"])
+        ),
+    }
+
 
 class IleoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Gère le flux de configuration initial."""
@@ -39,6 +58,7 @@ class IleoConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_USERNAME): str,
             vol.Required(CONF_PASSWORD): str,
             vol.Optional("import_history_energy", default=False): bool,
+            **_price_fields(),
         })
         return self.async_show_form(step_id="user", data_schema=data_schema, errors=errors)
 
@@ -94,10 +114,20 @@ class IleoOptionsFlowHandler(config_entries.OptionsFlow):
             self._config_entry.data.get("import_history_energy", False)
         )
 
+        current_price = self._config_entry.options.get(
+            CONF_WATER_PRICE,
+            self._config_entry.data.get(CONF_WATER_PRICE, 0.0)
+        )
+        current_price_entity = self._config_entry.options.get(
+            CONF_WATER_PRICE_ENTITY,
+            self._config_entry.data.get(CONF_WATER_PRICE_ENTITY)
+        )
+
         options_schema = vol.Schema({
             vol.Required(CONF_USERNAME, default=current_user): str,
             vol.Required(CONF_PASSWORD, default=current_pass): str,
             vol.Optional("import_history_energy", default=current_hist): bool,
+            **_price_fields(current_price, current_price_entity),
         })
 
         return self.async_show_form(step_id="init", data_schema=options_schema, errors=errors)

@@ -33,6 +33,7 @@ Cette intégration personnalisée permet de récupérer vos données de consomma
 4. **Option Historique** : Lors de la première installation ou via le bouton "Modifier les identifiants", vous pouvez cocher la case **"Réécrire l'historique du Dashboard Énergie"**.
    * **Cochée** : Importe les 6 derniers mois de données (recommandé pour une première installation).
    * **Décochée** : Initialise le compteur à sa valeur actuelle sans importer le passé.
+5. **Coût de l'eau (facultatif)** : renseignez le **prix de l'eau en €/m³** et/ou une **entité de prix** (`input_number` ou capteur en €/m³). L'entité est prioritaire ; le prix fixe sert de repli si elle est indisponible. Avec un prix à 0 et sans entité, aucun coût n'est calculé. Ces réglages sont modifiables à tout moment via le bouton **Configurer**.
 
 ---
 
@@ -59,13 +60,13 @@ Pour un suivi précis, configurez votre consommation d'eau comme suit :
 2. Dans la section **Consommation d'eau**, ajoutez une source.
 3. **Méthode Recommandée** : Choisissez le capteur **`Ileo Index Mode Ghost`**.
    * Grâce à l'injection statistique, vos 200L consommés le lundi apparaîtront sur la colonne du lundi, même si Iléo ne publie l'info que le mercredi.
-   * A noter que ce mode est plus précis sur les dates de consommation, mais ne permet pas d'utiliser les couts.
+   * **Coûts** : si un prix est configuré, choisissez *« Utiliser une entité qui suit le coût total »* et sélectionnez la statistique **`Ileo Index Mode Ghost coût`** (`ileo_direct:ileo_index_mode_ghost_cout`). Le coût est calculé à chaque injection (volume × prix en vigueur à ce moment) et placé à la même date que la consommation.
 4. **Méthode Alternative** : Utilisez `Ileo Compteur Eau (Index)`. La consommation sera alors enregistrée au moment de la synchronisation (souvent avec 2 jours de décalage). Ainsi, la consommation du Lundi etant récupérée le Mercredi, elle apparaitra le Mercredi.
-5. Après la mise a jour, il est recommandé d'utiliser l'outil statistiques présent dans le menu "outils de développement" pour corriger les valeurs abérantes ; c'est a dire souvent la première valeur intégrée qui donne une consommation en litre égale à l'index, alors que les suivantes sont basées sur une différence d'index.
+5. Le premier relevé injecté n'est plus compté comme une consommation égale à l'index : la somme statistique part de 0. Pour une installation existante qui présente encore ce pic, il suffit de le corriger une fois dans **Outils de développement** > **Statistiques** (icône « Ajuster ») ; les injections suivantes restent continues.
 
 En synthèse pour le choix du capteur du tableau énergie : 
-   * Si la priorité c'est la consommation positionnée a la bonne date et avec un historique ==> **`Ileo Index Mode Ghost`**.
-   * Si la priorité c'est une conso globale sur une periode avec gestion des coûts ==> **`Ileo Compteur Eau (Index)`**.
+   * Si la priorité c'est la consommation positionnée a la bonne date et avec un historique (et les coûts si un prix est configuré) ==> **`Ileo Index Mode Ghost`**.
+   * Si la priorité c'est une conso globale sur une periode, enregistrée au jour de la synchronisation ==> **`Ileo Compteur Eau (Index)`**.
 
 ## 💡 Astuces Utiles
 
@@ -77,6 +78,8 @@ Le capteur `Ileo Compteur Eau (Index)` étant de type `total_increasing`, il est
 4. Définissez la période (Mensuelle, Hebdomadaire, etc.).
 
 ### Gestion de la base de données
-Le capteur **Ghost** interroge systématiquement votre historique en base de données avant chaque mise à jour. Il n'injecte que les données "nouvelles" pour éviter les doublons ou les pics erronés, tout en forçant la valeur de la somme égale à l'index pour une cohérence parfaite dans le tableau Énergie.
+Le capteur **Ghost** interroge systématiquement votre historique en base de données avant chaque mise à jour. Il n'injecte que les données "nouvelles" pour éviter les doublons, et poursuit la somme statistique à partir de la dernière valeur enregistrée (cumul des écarts d'index), ce qui évite tout pic dans le tableau Énergie.
+
+Le coût, lui, est figé au prix en vigueur lors de l'injection : un changement de prix ne s'applique qu'aux relevés suivants, et activer un prix ne recalcule pas l'historique déjà importé.
 
 ---
